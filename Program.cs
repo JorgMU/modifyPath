@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 
 enum AllowedOptions { Help, Add, Clean, List, Remove, User, Process, Machine,
-  Confirm, DoNotFixCase, KeepDuplicates, KeepOrphans, Verbose, WhatIf }
+  DoNotFixCase, KeepDuplicates, KeepOrphans, Verbose, WhatIf }
 
 namespace modifyPath
 {
@@ -32,13 +32,15 @@ namespace modifyPath
     private static readonly List<AllowedOptions> FLAGS = new List<AllowedOptions>()
     {
       AllowedOptions.Verbose, AllowedOptions.KeepDuplicates, AllowedOptions.KeepOrphans,
-      AllowedOptions.DoNotFixCase, AllowedOptions.Confirm, AllowedOptions.WhatIf
+      AllowedOptions.DoNotFixCase, AllowedOptions.WhatIf
     };
-
-
+    
     static void Main(string[] args)
     {
       _opt = new Options(args, false);
+
+      if(_opt.HasWarnings)
+        ShowUse(string.Join("\r\n",_opt.Warnings.ToArray()), -1);
 
       EnvironmentVariableTarget? target = null;
       AllowedOptions? operation = null;
@@ -68,7 +70,6 @@ namespace modifyPath
         }
       }
 
-
       if (target == null) target = EnvironmentVariableTarget.User;
       if (operation == null) operation = AllowedOptions.List;
 
@@ -83,7 +84,10 @@ namespace modifyPath
         case AllowedOptions.Remove:
           break;
         case AllowedOptions.List:
-          List((EnvironmentVariableTarget)target);
+          List(target); //needs to be cast because target is nullable
+          break;
+        case AllowedOptions.Clean:
+          Clean(target); //needs to be cast because target is nullable
           break;
         default:
           break;
@@ -93,14 +97,24 @@ namespace modifyPath
       Console.ReadKey();
     }
 
-    private static void Clean(EnvironmentVariableTarget Target)
+    private static void Clean(EnvironmentVariableTarget? Target)
     {
-
+      if (Target == null) throw new ArgumentNullException("Target", "Null not acceptable at this point.");
+      List<string> cleaned = GetCurrentPath((EnvironmentVariableTarget)Target);
+      string result = string.Join(";", cleaned.ToArray());
+      if (_whatIf)
+      {
+        Console.WriteLine("\r\nCleaned path:\r\n" + result);
+        Console.WriteLine("\r\nWhatIf specified, no action taken.");
+        return;
+      }
+      Verbose("Cleaned path:\r\n + result");
     }
 
-    private static void List(EnvironmentVariableTarget Target)
+    private static void List(EnvironmentVariableTarget? Target)
     {
-      foreach (string path in GetCurrentPath(Target))
+      if (Target == null) throw new ArgumentNullException("Target", "Null not acceptable at this point.");
+      foreach (string path in GetCurrentPath((EnvironmentVariableTarget)Target))
         if (Directory.Exists(path)) Console.WriteLine(path);
         else Console.WriteLine("[{0}]", path);
     }
@@ -110,7 +124,14 @@ namespace modifyPath
       List<string> result = new List<string>();
       List<string> used = new List<string>(); //using paralle list to case insensivity
 
-      foreach (string item in Environment.GetEnvironmentVariable(ENVNAME, Target).Split(';'))
+      string original = Environment.GetEnvironmentVariable(ENVNAME, Target);
+
+      if(_whatIf)
+        Console.WriteLine("\r\nOriginal path:\r\n" + original);
+      else
+        Verbose("Original path:\r\n" + original);
+
+      foreach (string item in original.Split(';'))
       {
         string cp = item.TrimEnd('\\');
         if (cp == "") continue;
