@@ -10,12 +10,13 @@ namespace modifyPath
 {
   class Program
   {
+    private const string ENVNAME = "PathTest"; //for testing
     private static readonly string _exe = Path.GetFileName(Environment.GetCommandLineArgs()[0]);
     private static Options _opt;
     private static bool _verbose = false;
     private static bool _keepOrphans = false;
     private static bool _keepDupes = false;
-    private static bool _fixCase = false;
+    private static bool _fixCase = true;
     private static bool _whatIf = false;
 
     private static readonly List<AllowedOptions> OPS = new List<AllowedOptions>()
@@ -39,12 +40,24 @@ namespace modifyPath
     {
       _opt = new Options(args, false);
 
-      EnvironmentVariableTarget? evt = null;
-      AllowedOptions? ao = null;
+      EnvironmentVariableTarget? target = null;
+      AllowedOptions? operation = null;
 
       foreach (AllowedOptions o in _opt.ActiveOptions)
       {
-        if (FLAGS.Contains(o))
+        if (OPS.Contains(o))
+        {
+          if (operation != null) ShowUse("You can only choose one operation!", -1);
+          operation = o;
+        }
+          else if (Targets.Contains(o))
+        {
+          if (target != null) ShowUse("You can only choose one target!", -1);
+          else if (o == AllowedOptions.Machine) target = EnvironmentVariableTarget.Machine;
+          else if (o == AllowedOptions.Process) target = EnvironmentVariableTarget.Process;
+          else if (o == AllowedOptions.User) target = EnvironmentVariableTarget.User;
+        }
+        else if (FLAGS.Contains(o))
         {
           //invert defaults if necessary
           if (o == AllowedOptions.DoNotFixCase) _fixCase = false;
@@ -53,95 +66,93 @@ namespace modifyPath
           else if (o == AllowedOptions.Verbose) _verbose = true;
           else if (o == AllowedOptions.WhatIf) _whatIf = true;
         }
-        else if (OPS.Contains(o))
-        {
-          if (ao != null) ShowUse("You can only provide one operation!", -1);
-          ao = o;
-        }
-          else if (Targets.Contains(o))
-        {
-          if (evt != null) ShowUse("You can only provide one target!", -1);
-          else if (o == AllowedOptions.Machine) evt = EnvironmentVariableTarget.Machine;
-          else if (o == AllowedOptions.Process) evt = EnvironmentVariableTarget.Process;
-          else if (o == AllowedOptions.User) evt = EnvironmentVariableTarget.User;
-        }
       }
 
+
+      if (target == null) target = EnvironmentVariableTarget.User;
+      if (operation == null) operation = AllowedOptions.List;
+
+      Verbose("Operation: " + operation);
+      Verbose("Target: " + target);
       Verbose(_opt.ToString());
 
-      if (evt == null) evt = EnvironmentVariableTarget.User;
-      if (ao == null) ao = AllowedOptions.List;
-
-      Console.WriteLine("{0}/{1}", evt, ao);
-
-      switch (ao)
+      switch (operation)
       {
         case AllowedOptions.Add:
           break;
         case AllowedOptions.Remove:
           break;
         case AllowedOptions.List:
-          List((EnvironmentVariableTarget)evt);
+          List((EnvironmentVariableTarget)target);
           break;
         default:
           break;
       }
 
+      Console.Write("Press a key to exit...");
       Console.ReadKey();
+    }
+
+    private static void Clean(EnvironmentVariableTarget Target)
+    {
+
     }
 
     private static void List(EnvironmentVariableTarget Target)
     {
-      foreach (DirectoryInfo di in GetCurrentPath(Target))
-        if (di.Exists) Console.WriteLine(di);
-        else Console.WriteLine("[{0}]", di.FullName);
+      foreach (string path in GetCurrentPath(Target))
+        if (Directory.Exists(path)) Console.WriteLine(path);
+        else Console.WriteLine("[{0}]", path);
     }
 
-    private static List<DirectoryInfo> GetCurrentPath(EnvironmentVariableTarget Target)
+    private static List<string> GetCurrentPath(EnvironmentVariableTarget Target)
     {
-      List<DirectoryInfo> result = new List<DirectoryInfo>();
-      List<string> used = new List<string>();
-      foreach (string item in Environment.GetEnvironmentVariable("Path", Target).Split(';'))
+      List<string> result = new List<string>();
+      List<string> used = new List<string>(); //using paralle list to case insensivity
+
+      foreach (string item in Environment.GetEnvironmentVariable(ENVNAME, Target).Split(';'))
       {
-        DirectoryInfo di = new DirectoryInfo(item.TrimEnd('\\'));
-        if (di.Exists)
+        string cp = item.TrimEnd('\\');
+        if (cp == "") continue;
+
+        if (Directory.Exists(cp))
         {
           if (_fixCase)
           {
-            string s = GetCaseFromFileSystem(di);
-            if (s != di.FullName)
+            string vp = GetCaseFromFileSystem(cp);
+            if (vp != cp)
             {
-              Verbose("Case correction: [{0}][{1}]", di.FullName, s);
-              di = new DirectoryInfo(s);
+              Verbose("Case correction: {0}", cp);
+              cp = vp;
             }
           }
         }
         else
         {
           if (_keepOrphans)
-            Verbose("Orphan detected and kept: " + di.FullName);
+            Verbose("Orphan detected and kept: " + cp);
           else
           {
-            Verbose("Orphan skipped: " + di.FullName);
+            Verbose("Orphan skipped: " + cp);
             continue;
           }
         }
 
-        if (!used.Contains(di.FullName))
-        {
-          used.Add(di.FullName);
-          result.Add(di);
-        }
-        else
+        if (used.Contains(cp.ToLower()))
         {
           if (_keepDupes)
           {
-            Verbose("Duplicate kept: " + di.FullName);
-            used.Add(di.FullName);
-            result.Add(di);
+            Verbose("Duplicate kept: " + cp);
+            result.Add(cp);
           }
-          else Verbose("Duplicate removed: " + di.FullName);
+          else Verbose("Duplicate skipped: " + cp);
         }
+        else
+        {
+          used.Add(cp.ToLower());
+          result.Add(cp);
+        }
+
       }
 
       return result;
@@ -152,12 +163,14 @@ namespace modifyPath
       if (_verbose) Console.WriteLine("v " + Message, Items);
     }
 
-    private static string GetCaseFromFileSystem(DirectoryInfo DirInfo)
+    private static string GetCaseFromFileSystem(string DirPath)
     {
-      DirectoryInfo parent = DirInfo.Parent;
-      if (parent == null) return DirInfo.Name;
-      return Path.Combine(GetCaseFromFileSystem(parent),
-        parent.GetDirectories(DirInfo.Name)[0].Name);
+      DirectoryInfo current = new DirectoryInfo(DirPath);
+      DirectoryInfo parent = current.Parent;
+      if (parent == null) return DirPath;
+
+      return Path.Combine(GetCaseFromFileSystem(parent.FullName),
+        parent.GetDirectories(current.Name)[0].Name);
     }
 
     private static void ShowError(SystemException se, int? Exit)
