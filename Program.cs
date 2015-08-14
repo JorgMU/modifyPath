@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-enum AllowedOptions { Help, Add, Remove, List, User, Process, Machine, Verbose, KeepOrphans, KeepDuplicates, DoNotFixCase, WhatIf }
+enum AllowedOptions { Help, Add, Clean, List, Remove, User, Process, Machine,
+  Confirm, DoNotFixCase, KeepDuplicates, KeepOrphans, Verbose, WhatIf }
 
 namespace modifyPath
 {
@@ -17,6 +18,23 @@ namespace modifyPath
     private static bool _fixCase = false;
     private static bool _whatIf = false;
 
+    private static readonly List<AllowedOptions> OPS = new List<AllowedOptions>()
+    {
+      AllowedOptions.Add, AllowedOptions.Clean, AllowedOptions.List, AllowedOptions.Remove
+    };
+
+    private static readonly List<AllowedOptions> Targets = new List<AllowedOptions>()
+    {
+      AllowedOptions.Machine, AllowedOptions.Process, AllowedOptions.User
+    };
+
+    private static readonly List<AllowedOptions> FLAGS = new List<AllowedOptions>()
+    {
+      AllowedOptions.Verbose, AllowedOptions.KeepDuplicates, AllowedOptions.KeepOrphans,
+      AllowedOptions.DoNotFixCase, AllowedOptions.Confirm, AllowedOptions.WhatIf
+    };
+
+
     static void Main(string[] args)
     {
       _opt = new Options(args, false);
@@ -24,54 +42,30 @@ namespace modifyPath
       EnvironmentVariableTarget? evt = null;
       AllowedOptions? ao = null;
 
-      foreach(AllowedOptions o in _opt.ActiveOptions)
-        switch (o)
+      foreach (AllowedOptions o in _opt.ActiveOptions)
+      {
+        if (FLAGS.Contains(o))
         {
-          case AllowedOptions.Help:
-            ShowUse("", 0);
-            break;
-          case AllowedOptions.Add:
-            if (ao != null) ShowUse("You can only provide one operation!", -1);
-            ao = o;
-            break;
-          case AllowedOptions.Remove:
-            if (ao != null) ShowUse("You can only provide one operation!", -1);
-            ao = o;
-            break;
-          case AllowedOptions.List:
-            if (ao != null) ShowUse("You can only provide one operation!", -1);
-            ao = o;
-            break;
-          case AllowedOptions.User:
-            if (evt != null) ShowUse("You can only provide one target!", -1);
-            evt = EnvironmentVariableTarget.User;
-            break;
-          case AllowedOptions.Process:
-            if (evt != null) ShowUse("You can only provide one target!", -1);
-            evt = EnvironmentVariableTarget.Process;
-            break;
-          case AllowedOptions.Machine:
-            if (evt != null) ShowUse("You can only provide one target!", -1);
-            evt = EnvironmentVariableTarget.Machine;
-            break;
-          case AllowedOptions.Verbose:
-            _verbose = true;
-            break;
-          case AllowedOptions.KeepOrphans:
-            _keepOrphans = true;
-            break;
-          case AllowedOptions.KeepDuplicates:
-            _keepDupes = true;
-            break;
-          case AllowedOptions.DoNotFixCase:
-            _fixCase = false;
-            break;
-          case AllowedOptions.WhatIf:
-            _whatIf = true;
-            break;
-          default:
-            break;
+          //invert defaults if necessary
+          if (o == AllowedOptions.DoNotFixCase) _fixCase = false;
+          else if (o == AllowedOptions.KeepDuplicates) _keepDupes = true;
+          else if (o == AllowedOptions.KeepOrphans) _keepOrphans = true;
+          else if (o == AllowedOptions.Verbose) _verbose = true;
+          else if (o == AllowedOptions.WhatIf) _whatIf = true;
         }
+        else if (OPS.Contains(o))
+        {
+          if (ao != null) ShowUse("You can only provide one operation!", -1);
+          ao = o;
+        }
+          else if (Targets.Contains(o))
+        {
+          if (evt != null) ShowUse("You can only provide one target!", -1);
+          else if (o == AllowedOptions.Machine) evt = EnvironmentVariableTarget.Machine;
+          else if (o == AllowedOptions.Process) evt = EnvironmentVariableTarget.Process;
+          else if (o == AllowedOptions.User) evt = EnvironmentVariableTarget.User;
+        }
+      }
 
       Verbose(_opt.ToString());
 

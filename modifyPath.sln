@@ -5,7 +5,13 @@ VisualStudioVersion = 14.0.23107.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "modifyPath", "modifyPath.csproj", "{B62C097F-5268-479F-93FD-4F3AE984AA1C}"
 EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "Options", "..\Options\Options.shproj", "{7EB4B903-2750-47E3-96A0-1707094A06A6}"
+EndProject
 Global
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		..\Options\Options.projitems*{b62c097f-5268-479f-93fd-4f3ae984aa1c}*SharedItemsImports = 4
+		..\Options\Options.projitems*{7eb4b903-2750-47e3-96a0-1707094a06a6}*SharedItemsImports = 13
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
