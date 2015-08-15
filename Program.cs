@@ -80,6 +80,7 @@ namespace modifyPath
       switch (operation)
       {
         case AllowedOptions.Add:
+          Add((EnvironmentVariableTarget)target, _opt[(AllowedOptions)operation]);
           break;
         case AllowedOptions.Remove:
           break;
@@ -107,44 +108,37 @@ namespace modifyPath
         return;
       }
 
-      string result = string.Join(";", cleaned.ToArray());
+      UpdatePath(Target, cleaned);
+    }
+
+    private static void UpdatePath(EnvironmentVariableTarget Target, List<string> NewPath)
+    {
+      string result = string.Join(";", NewPath.ToArray());
 
       string pre = GetPathSafe(Target);
       if (pre == result)
       {
-        Console.WriteLine("Cleaned path matches original, nothing to do.");
+        Console.WriteLine("Current path matches update, nothing to do.");
         return;
       }
 
       if (_whatIf)
       {
-        Console.WriteLine("\r\nCleaned path:\r\n" + result);
+        Console.WriteLine("\r\nUpdated path:\r\n" + result);
         Console.WriteLine("\r\nWhatIf specified, no action taken.");
         return;
       }
 
-      Verbose("Cleaned path:\r\n" + result);
+      Verbose("Updated path:\r\n" + result);
 
-      try
-      {
-        Environment.SetEnvironmentVariable(ENVNAME, result, Target);
-      }
-      catch(SystemException se) { ShowError(se, null); }
+      try { Environment.SetEnvironmentVariable(ENVNAME, result, Target); }
+      catch (SystemException se) { ShowError(se, -1); }
 
       string test = GetPathSafe(Target);
       if (test == result)
-        Console.Write("Path updated.");
+        Console.WriteLine("Path updated.");
       else
-        Console.Write("Faild to update path.");
-    }
-
-    private static string GetPathSafe(EnvironmentVariableTarget Target)
-    {
-      string result = "";
-      try { result = Environment.GetEnvironmentVariable(ENVNAME, Target); }
-      catch (SystemException se) { ShowError(se, null); }
-      if (result == null) return "";
-      return result;
+        Console.WriteLine("Failed to update path.");
     }
 
     private static void List(EnvironmentVariableTarget Target)
@@ -160,6 +154,55 @@ namespace modifyPath
       foreach (string path in current)
         if (Directory.Exists(path)) Console.WriteLine(path);
         else Console.WriteLine("[{0}]", path);
+    }
+
+    private static void Add(EnvironmentVariableTarget Target, string NewItem)
+    {
+      if(NewItem == "")
+        ShowUse("You must provide a path when using ADD", -1);
+
+      string work = NewItem;
+      DirectoryInfo di = null;
+
+      try { di = new DirectoryInfo(NewItem); }
+      catch (SystemException se) { ShowError(se, -1); }
+
+      if (di.Exists)
+      {
+         if(_fixCase)
+        {
+          string s = GetCaseFromFileSystem(di.FullName);
+          if(s != work)
+          {
+            Verbose("Corrected case: " + s);
+            work = s;
+          }
+        } 
+      }
+      else
+      {
+        if (!_keepOrphans)
+        {
+          Console.WriteLine("New path item does not exist, you must set KeepOphans to add it.");
+          return;
+        }
+      }
+
+      List<string> original = GetCurrentPath(Target);
+
+      original.Add(work);
+
+      UpdatePath(Target, original);
+
+    }
+
+    private static string GetPathSafe(EnvironmentVariableTarget Target)
+    {
+      string result = "";
+      try { result = Environment.GetEnvironmentVariable(ENVNAME, Target); }
+      catch (SystemException se) { ShowError(se, null); }
+      if (result == null) return "";
+      return result;
     }
 
     private static List<string> GetCurrentPath(EnvironmentVariableTarget Target)
