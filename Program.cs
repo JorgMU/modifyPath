@@ -84,10 +84,10 @@ namespace modifyPath
         case AllowedOptions.Remove:
           break;
         case AllowedOptions.List:
-          List(target); //needs to be cast because target is nullable
+          List((EnvironmentVariableTarget)target); //needs to be cast because target is nullable
           break;
         case AllowedOptions.Clean:
-          Clean(target); //needs to be cast because target is nullable
+          Clean((EnvironmentVariableTarget)target); //needs to be cast because target is nullable
           break;
         default:
           break;
@@ -97,24 +97,67 @@ namespace modifyPath
       Console.ReadKey();
     }
 
-    private static void Clean(EnvironmentVariableTarget? Target)
+    private static void Clean(EnvironmentVariableTarget Target)
     {
-      if (Target == null) throw new ArgumentNullException("Target", "Null not acceptable at this point.");
-      List<string> cleaned = GetCurrentPath((EnvironmentVariableTarget)Target);
+      List<string> cleaned = GetCurrentPath(Target);
+
+      if (cleaned.Count < 1)
+      {
+        Console.WriteLine(ENVNAME + " is empty.");
+        return;
+      }
+
       string result = string.Join(";", cleaned.ToArray());
+
+      string pre = GetPathSafe(Target);
+      if (pre == result)
+      {
+        Console.WriteLine("Cleaned path matches original, nothing to do.");
+        return;
+      }
+
       if (_whatIf)
       {
         Console.WriteLine("\r\nCleaned path:\r\n" + result);
         Console.WriteLine("\r\nWhatIf specified, no action taken.");
         return;
       }
-      Verbose("Cleaned path:\r\n + result");
+
+      Verbose("Cleaned path:\r\n" + result);
+
+      try
+      {
+        Environment.SetEnvironmentVariable(ENVNAME, result, Target);
+      }
+      catch(SystemException se) { ShowError(se, null); }
+
+      string test = GetPathSafe(Target);
+      if (test == result)
+        Console.Write("Path updated.");
+      else
+        Console.Write("Faild to update path.");
     }
 
-    private static void List(EnvironmentVariableTarget? Target)
+    private static string GetPathSafe(EnvironmentVariableTarget Target)
     {
-      if (Target == null) throw new ArgumentNullException("Target", "Null not acceptable at this point.");
-      foreach (string path in GetCurrentPath((EnvironmentVariableTarget)Target))
+      string result = "";
+      try { result = Environment.GetEnvironmentVariable(ENVNAME, Target); }
+      catch (SystemException se) { ShowError(se, null); }
+      if (result == null) return "";
+      return result;
+    }
+
+    private static void List(EnvironmentVariableTarget Target)
+    {
+      List<string> current = GetCurrentPath(Target);
+
+      if(current.Count < 1)
+      {
+        Console.WriteLine(ENVNAME + " is empty.");
+        return;
+      }
+
+      foreach (string path in current)
         if (Directory.Exists(path)) Console.WriteLine(path);
         else Console.WriteLine("[{0}]", path);
     }
@@ -124,9 +167,11 @@ namespace modifyPath
       List<string> result = new List<string>();
       List<string> used = new List<string>(); //using paralle list to case insensivity
 
-      string original = Environment.GetEnvironmentVariable(ENVNAME, Target);
+      string original = GetPathSafe(Target);
 
-      if(_whatIf)
+      if (original == "") return result;
+
+      if (_whatIf)
         Console.WriteLine("\r\nOriginal path:\r\n" + original);
       else
         Verbose("Original path:\r\n" + original);
