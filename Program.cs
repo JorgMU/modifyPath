@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-enum AllowedOptions { Help, Add, Clean, List, Remove, User, Process, Machine,
-  DoNotFixCase, KeepDuplicates, KeepOrphans, Verbose, WhatIf }
+enum AllowedOptions { Help, Append, Prefix, Clean, List, Remove, User, Process, Machine,
+  IgnoreCase, KeepDuplicates, KeepOrphans, Verbose, WhatIf }
 
 namespace modifyPath
 {
@@ -16,12 +16,13 @@ namespace modifyPath
     private static bool _verbose = false;
     private static bool _keepOrphans = false;
     private static bool _keepDupes = false;
-    private static bool _fixCase = true;
+    private static bool _matchCase = true;
     private static bool _whatIf = false;
 
     private static readonly List<AllowedOptions> OPS = new List<AllowedOptions>()
     {
-      AllowedOptions.Add, AllowedOptions.Clean, AllowedOptions.List, AllowedOptions.Remove
+      AllowedOptions.Help, AllowedOptions.Append, AllowedOptions.Prefix,
+      AllowedOptions.Clean, AllowedOptions.List, AllowedOptions.Remove
     };
 
     private static readonly List<AllowedOptions> Targets = new List<AllowedOptions>()
@@ -32,7 +33,7 @@ namespace modifyPath
     private static readonly List<AllowedOptions> FLAGS = new List<AllowedOptions>()
     {
       AllowedOptions.Verbose, AllowedOptions.KeepDuplicates, AllowedOptions.KeepOrphans,
-      AllowedOptions.DoNotFixCase, AllowedOptions.WhatIf
+      AllowedOptions.IgnoreCase, AllowedOptions.WhatIf
     };
     
     static void Main(string[] args)
@@ -62,7 +63,7 @@ namespace modifyPath
         else if (FLAGS.Contains(o))
         {
           //invert defaults if necessary
-          if (o == AllowedOptions.DoNotFixCase) _fixCase = false;
+          if (o == AllowedOptions.IgnoreCase) _matchCase = false;
           else if (o == AllowedOptions.KeepDuplicates) _keepDupes = true;
           else if (o == AllowedOptions.KeepOrphans) _keepOrphans = true;
           else if (o == AllowedOptions.Verbose) _verbose = true;
@@ -71,7 +72,7 @@ namespace modifyPath
       }
 
       if (target == null) target = EnvironmentVariableTarget.User;
-      if (operation == null) operation = AllowedOptions.List;
+      if (operation == null) operation = AllowedOptions.Help;
 
       Verbose("Operation: " + operation);
       Verbose("Target: " + target);
@@ -79,10 +80,17 @@ namespace modifyPath
 
       switch (operation)
       {
-        case AllowedOptions.Add:
-          Add((EnvironmentVariableTarget)target, _opt[(AllowedOptions)operation]);
+        case AllowedOptions.Help:
+          ShowUse("", 0);
+          break;
+        case AllowedOptions.Append:
+          Add((EnvironmentVariableTarget)target, _opt[(AllowedOptions)operation], true);
+          break;
+        case AllowedOptions.Prefix:
+          Add((EnvironmentVariableTarget)target, _opt[(AllowedOptions)operation], false);
           break;
         case AllowedOptions.Remove:
+          Remove((EnvironmentVariableTarget)target, _opt[(AllowedOptions)operation]);
           break;
         case AllowedOptions.List:
           List((EnvironmentVariableTarget)target); //needs to be cast because target is nullable
@@ -94,7 +102,9 @@ namespace modifyPath
           break;
       }
 
-      Console.Write("Press a key to exit...");
+
+      //this is only for testing
+      Console.Write("\r\nPress a key to exit...");
       Console.ReadKey();
     }
 
@@ -118,7 +128,7 @@ namespace modifyPath
       string pre = GetPathSafe(Target);
       if (pre == result)
       {
-        Console.WriteLine("Current path matches update, nothing to do.");
+        Console.WriteLine("\r\nCurrent path matches update, nothing to do.");
         return;
       }
 
@@ -156,7 +166,7 @@ namespace modifyPath
         else Console.WriteLine("[{0}]", path);
     }
 
-    private static void Add(EnvironmentVariableTarget Target, string NewItem)
+    private static void Add(EnvironmentVariableTarget Target, string NewItem, bool Append)
     {
       if(NewItem == "")
         ShowUse("You must provide a path when using ADD", -1);
@@ -169,7 +179,7 @@ namespace modifyPath
 
       if (di.Exists)
       {
-         if(_fixCase)
+         if(_matchCase)
         {
           string s = GetCaseFromFileSystem(di.FullName);
           if(s != work)
@@ -190,10 +200,49 @@ namespace modifyPath
 
       List<string> original = GetCurrentPath(Target);
 
-      original.Add(work);
+      if (Append)
+        original.Add(work);
+      else
+        original.Insert(0, work);
 
       UpdatePath(Target, original);
 
+    }
+
+    private static void Remove(EnvironmentVariableTarget Target, string Item)
+    {
+      string toRemove = Item;
+
+      List<string> original = GetCurrentPath(Target);
+
+      if(_matchCase)
+      {
+        if(!original.Contains(toRemove))
+        {
+          Console.WriteLine("Could not find item to remove: " + Item);
+          return;
+        }
+      }
+      else
+      {
+        foreach (string p in original)
+        {
+          if (p.ToLower() == toRemove.ToLower()) toRemove = p;
+          Verbose("Corrected case: " + toRemove);
+        }
+
+        if (!original.Contains(toRemove))
+        {
+          Console.WriteLine("Could not find item to remove: " + Item);
+          return;
+        }
+      }
+
+      original.Remove(toRemove);
+
+      UpdatePath(Target, original);
+
+      Console.WriteLine("Item removed: " + toRemove);
     }
 
     private static string GetPathSafe(EnvironmentVariableTarget Target)
@@ -226,7 +275,7 @@ namespace modifyPath
 
         if (Directory.Exists(cp))
         {
-          if (_fixCase)
+          if (_matchCase)
           {
             string vp = GetCaseFromFileSystem(cp);
             if (vp != cp)
@@ -292,7 +341,49 @@ namespace modifyPath
 
     private static void ShowUse(string Message, int? Exit)
     {
-      Console.WriteLine(Message);
+      Console.WriteLine(@"modifyPath - jorgie@missouri.edu - 2015
+
+  This is a simple utility help you clean and update your path
+
+  Use: modifyPath.exe operation:data target flag(s)
+
+  Operations:
+
+    {0,-6}    - show this info (default)
+    {1,-6}:item - add an item at the end of the current path 
+    {2,-6}:item - add an item at the begining of the current path 
+    {3,-6}      - show the current path
+    {4,-6}      - remove dupes, and fix the case of the current path
+    {5,-6}:item - remove and item from the current path
+
+  Targets: ({6}), {7}, {8}
+
+  Flags: {9}, {10}, {11}, {12}, {13}
+
+
+  Example: modifyPath.exe Append:c:\temp Machine WhatIf
+
+  This example would append c:\temp to the end of the current Machine path,
+  and show you the result. Because of the WhatIf flag, it would not actually
+  update the environment.
+",
+      "(" + AllowedOptions.Help + ")",
+      AllowedOptions.Append,
+      AllowedOptions.Prefix,
+      AllowedOptions.List,
+      AllowedOptions.Clean,
+      AllowedOptions.Remove,
+      AllowedOptions.User,
+      AllowedOptions.Machine,
+      AllowedOptions.Process,
+      AllowedOptions.IgnoreCase,
+      AllowedOptions.KeepDuplicates,
+      AllowedOptions.KeepOrphans,
+      AllowedOptions.WhatIf,
+      AllowedOptions.Verbose
+      );
+
+      Console.WriteLine("\r\n" + Message);
       if (Exit != null) Environment.Exit((int)Exit);
     }
   }
